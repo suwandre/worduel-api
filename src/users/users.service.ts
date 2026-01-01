@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<User>) {}
 
-  /** Creates a new Worduel user. */
+  /** Creates a new Worduel user, storing it in the database. */
   async create(
     email: string,
     username: string,
