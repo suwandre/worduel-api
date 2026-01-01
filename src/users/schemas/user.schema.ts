@@ -1,7 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-/** Represents a Worduel user. */
 @Schema({ timestamps: true, collection: 'users' })
 export class User extends Document {
   @Prop({ required: true, unique: true })
