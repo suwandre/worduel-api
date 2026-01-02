@@ -27,6 +27,9 @@ export class User extends Document {
   /** The amount of times the player guessed a word within 1, 2, ..., or 6 tries. */
   @Prop({ type: Object, default: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 } })
   guessDistribution: Record<number, number>;
+
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
