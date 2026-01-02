@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  UseGuards,
+  Patch,
+} from '@nestjs/common';
 import { GamesService } from './games.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { SubmitGuessDto } from './dto/submit-guess.dto';
@@ -37,6 +45,15 @@ export class GamesController {
     @CurrentUser() user: { userId: string; email: string },
   ) {
     return this.gamesService.submitGuess(id, user.userId, submitGuessDto.guess);
+  }
+
+  @Patch(':id/word')
+  setWord(
+    @Param('id') id: string,
+    @Body() body: { targetWord: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.setGameWord(id, user.userId, body.targetWord);
   }
 
   @Post('invites')
