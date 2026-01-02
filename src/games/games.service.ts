@@ -8,6 +8,8 @@ import { Model, Types } from 'mongoose';
 import { Game, GameStatus } from './schemas/game.schema';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UsersService } from 'src/users/users.service';
+import { Invite, InviteStatus } from './schemas/invite.schema';
+import { CreateInviteDto } from './dto/create-invite.dto';
 
 export interface GuessResult {
   letter: string;
@@ -18,6 +20,7 @@ export interface GuessResult {
 export class GamesService {
   constructor(
     @InjectModel(Game.name) private gameModel: Model<Game>,
+    @InjectModel(Invite.name) private inviteModel: Model<Invite>,
     private usersService: UsersService,
   ) {}
 
@@ -166,5 +169,125 @@ export class GamesService {
     }
 
     await user.save();
+  }
+
+  /** Creates and sends an invite from one player to another player. */
+  async createInvite(
+    senderId: string,
+    createInviteDto: CreateInviteDto,
+  ): Promise<Invite> {
+    // Check if receiver exists
+    const receiver = await this.usersService.findById(
+      createInviteDto.receiverId,
+    );
+    if (!receiver) {
+      throw new NotFoundException('Receiver not found');
+    }
+
+    // Can't invite yourself
+    if (senderId === createInviteDto.receiverId) {
+      throw new BadRequestException('Cannot invite yourself');
+    }
+
+    // Check for existing pending invite
+    const existingInvite = await this.inviteModel.findOne({
+      senderId: new Types.ObjectId(senderId),
+      receiverId: new Types.ObjectId(createInviteDto.receiverId),
+      status: InviteStatus.PENDING,
+    });
+
+    if (existingInvite) {
+      throw new BadRequestException(
+        'You already have a pending invite to this user',
+      );
+    }
+
+    const invite = new this.inviteModel({
+      senderId: new Types.ObjectId(senderId),
+      receiverId: new Types.ObjectId(createInviteDto.receiverId),
+      message: createInviteDto.message,
+    });
+
+    return invite.save();
+  }
+
+  /** Responds to an existing invite from another player. */
+  async respondToInvite(
+    inviteId: string,
+    userId: string,
+    accept: boolean,
+  ): Promise<Game | null> {
+    const invite = await this.inviteModel.findById(inviteId);
+
+    if (!invite) {
+      throw new NotFoundException('Invite not found');
+    }
+
+    if (invite.receiverId.toString() !== userId) {
+      throw new BadRequestException('You are not the recipient of this invite');
+    }
+
+    if (invite.status !== InviteStatus.PENDING) {
+      throw new BadRequestException('Invite is no longer pending');
+    }
+
+    if (accept) {
+      invite.status = InviteStatus.ACCEPTED;
+
+      // Create a game where sender picks the word
+      const game = new this.gameModel({
+        playerId: invite.senderId,
+        opponentId: invite.receiverId,
+        targetWord: 'PLACEHOLDER', // Sender will set this
+        maxAttempts: 6,
+      });
+
+      await game.save();
+      invite.gameId = game._id;
+      await invite.save();
+
+      return game;
+    } else {
+      invite.status = InviteStatus.DECLINED;
+      await invite.save();
+      return null;
+    }
+  }
+
+  /** Gets all invites sent or received by a player. */
+  async getUserInvites(
+    userId: string,
+  ): Promise<{ sent: Invite[]; received: Invite[] }> {
+    const sent = await this.inviteModel
+      .find({ senderId: new Types.ObjectId(userId) })
+      .populate('receiverId', 'username email')
+      .sort({ createdAt: -1 });
+
+    const received = await this.inviteModel
+      .find({ receiverId: new Types.ObjectId(userId) })
+      .populate('senderId', 'username email')
+      .sort({ createdAt: -1 });
+
+    return { sent, received };
+  }
+
+  /** Sets the target word for a game. */
+  async setGameWord(
+    gameId: string,
+    userId: string,
+    targetWord: string,
+  ): Promise<Game> {
+    const game = await this.findById(gameId);
+
+    if (game.playerId.toString() !== userId) {
+      throw new BadRequestException('Only the game creator can set the word');
+    }
+
+    if (game.targetWord !== 'PLACEHOLDER') {
+      throw new BadRequestException('Word has already been set');
+    }
+
+    game.targetWord = targetWord.toLowerCase();
+    return game.save();
   }
 }
