@@ -46,4 +46,13 @@ export class UsersService {
   ): Promise<boolean> {
     return bcrypt.compare(password, hashedPassword);
   }
+
+  /** Gets `limit` amount of players to form a leaderboard based on games won and max streak. */
+  async getLeaderboard(limit: number = 50): Promise<User[]> {
+    return this.userModel
+      .find()
+      .select('username gamesPlayed gamesWon maxStreak')
+      .sort({ gamesWon: -1, maxStreak: -1 })
+      .limit(limit);
+  }
 }

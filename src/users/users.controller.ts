@@ -48,4 +48,21 @@ export class UsersController {
       guessDistribution: userProfile.guessDistribution,
     };
   }
+
+  @Get('leaderboard')
+  async getLeaderboard() {
+    const users = await this.usersService.getLeaderboard();
+
+    return users.map((user, index) => ({
+      rank: index + 1,
+      username: user.username,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      winRate:
+        user.gamesPlayed > 0
+          ? Math.round((user.gamesWon / user.gamesPlayed) * 100)
+          : 0,
+      maxStreak: user.maxStreak,
+    }));
+  }
 }
