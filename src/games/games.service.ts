@@ -64,33 +64,51 @@ export class GamesService {
   ): Promise<{ game: Game; result: GuessResult[]; isCorrect: boolean }> {
     const game = await this.findById(gameId);
 
-    if (
-      game.playerId.toString() !== userId &&
-      (!game.opponentId || game.opponentId.toString() !== userId)
-    ) {
-      throw new BadRequestException('You are not part of this game');
+    // NEW: Check if user is the opponent (not the creator)
+    if (game.playerId.toString() === userId) {
+      throw new BadRequestException(
+        'You cannot play your own game. Wait for an opponent to guess.',
+      );
     }
 
+    // Check if user is the designated opponent (if set)
+    if (game.opponentId && game.opponentId.toString() !== userId) {
+      throw new BadRequestException('You are not the opponent for this game');
+    }
+
+    // If no opponent set yet, assign this user as opponent
+    if (!game.opponentId) {
+      game.opponentId = new Types.ObjectId(userId);
+    }
+
+    // Check if game is already finished
     if (game.status !== GameStatus.IN_PROGRESS) {
       throw new BadRequestException('Game is already finished');
     }
 
+    // Add guess
     game.guesses.push(guess.toLowerCase());
 
+    // Calculate result
     const result = this.calculateGuessResult(
       guess.toLowerCase(),
       game.targetWord,
     );
     const isCorrect = guess.toLowerCase() === game.targetWord;
 
+    // Update game status
     if (isCorrect) {
       game.status = GameStatus.WON;
       game.completedAt = new Date();
-      await this.updateUserStats(userId, true, game.guesses.length); // Add this
+
+      // Update opponent's stats (the one who guessed)
+      await this.updateUserStats(userId, true, game.guesses.length);
     } else if (game.guesses.length >= game.maxAttempts) {
       game.status = GameStatus.LOST;
       game.completedAt = new Date();
-      await this.updateUserStats(userId, false, game.guesses.length); // Add this
+
+      // Update opponent's stats (the one who guessed)
+      await this.updateUserStats(userId, false, game.guesses.length);
     }
 
     await game.save();
