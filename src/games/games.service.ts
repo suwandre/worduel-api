@@ -7,6 +7,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Game, GameStatus } from './schemas/game.schema';
 import { CreateGameDto } from './dto/create-game.dto';
+import { UsersService } from 'src/users/users.service';
 
 export interface GuessResult {
   letter: string;
@@ -15,7 +16,10 @@ export interface GuessResult {
 
 @Injectable()
 export class GamesService {
-  constructor(@InjectModel(Game.name) private gameModel: Model<Game>) {}
+  constructor(
+    @InjectModel(Game.name) private gameModel: Model<Game>,
+    private usersService: UsersService,
+  ) {}
 
   /** Creates a new Worduel game between two players. */
   async create(userId: string, createGameDto: CreateGameDto): Promise<Game> {
@@ -57,7 +61,6 @@ export class GamesService {
   ): Promise<{ game: Game; result: GuessResult[]; isCorrect: boolean }> {
     const game = await this.findById(gameId);
 
-    // Verify user is part of this game
     if (
       game.playerId.toString() !== userId &&
       (!game.opponentId || game.opponentId.toString() !== userId)
@@ -65,28 +68,26 @@ export class GamesService {
       throw new BadRequestException('You are not part of this game');
     }
 
-    // Check if game is already finished
     if (game.status !== GameStatus.IN_PROGRESS) {
       throw new BadRequestException('Game is already finished');
     }
 
-    // Add guess
     game.guesses.push(guess.toLowerCase());
 
-    // Calculate result
     const result = this.calculateGuessResult(
       guess.toLowerCase(),
       game.targetWord,
     );
     const isCorrect = guess.toLowerCase() === game.targetWord;
 
-    // Update game status
     if (isCorrect) {
       game.status = GameStatus.WON;
       game.completedAt = new Date();
+      await this.updateUserStats(userId, true, game.guesses.length); // Add this
     } else if (game.guesses.length >= game.maxAttempts) {
       game.status = GameStatus.LOST;
       game.completedAt = new Date();
+      await this.updateUserStats(userId, false, game.guesses.length); // Add this
     }
 
     await game.save();
@@ -136,5 +137,34 @@ export class GamesService {
     }
 
     return result;
+  }
+
+  /** Updates a player's game statistics. */
+  private async updateUserStats(
+    userId: string,
+    won: boolean,
+    numberOfGuesses: number,
+  ): Promise<void> {
+    const user = await this.usersService.findById(userId);
+    if (!user) return;
+
+    user.gamesPlayed += 1;
+
+    if (won) {
+      user.gamesWon += 1;
+      user.currentStreak += 1;
+
+      if (user.currentStreak > user.maxStreak) {
+        user.maxStreak = user.currentStreak;
+      }
+
+      // Update guess distribution
+      user.guessDistribution[numberOfGuesses] =
+        (user.guessDistribution[numberOfGuesses] || 0) + 1;
+    } else {
+      user.currentStreak = 0;
+    }
+
+    await user.save();
   }
 }
