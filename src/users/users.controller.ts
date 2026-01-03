@@ -85,4 +85,18 @@ export class UsersController {
       email: user.email,
     }));
   }
+
+  @Get('list')
+  @UseGuards(JwtAuthGuard)
+  async getUsersList(@CurrentUser() currentUser: JwtUser) {
+    const users = await this.usersService.getAllUsers();
+
+    // Exclude current user from list
+    return users
+      .filter((user) => user._id.toString() !== currentUser.userId)
+      .map((user) => ({
+        id: user._id,
+        username: user.username,
+      }));
+  }
 }

@@ -63,4 +63,9 @@ export class UsersService {
       .select('username email')
       .limit(10);
   }
+
+  /** Gets all users. */
+  async getAllUsers() {
+    return this.userModel.find().select('username _id').sort({ username: 1 });
+  }
 }
