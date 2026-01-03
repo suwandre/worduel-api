@@ -1,4 +1,10 @@
-import { Controller, Get, UseGuards, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  NotFoundException,
+  Query,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, type JwtUser } from '../common/decorators/user.decorator';
@@ -63,6 +69,20 @@ export class UsersController {
           ? Math.round((user.gamesWon / user.gamesPlayed) * 100)
           : 0,
       maxStreak: user.maxStreak,
+    }));
+  }
+
+  @Get('search')
+  async searchUsers(@Query('username') username: string) {
+    if (!username || username.length < 2) {
+      return [];
+    }
+
+    const users = await this.usersService.searchByUsername(username);
+    return users.map((user) => ({
+      id: user._id,
+      username: user.username,
+      email: user.email,
     }));
   }
 }

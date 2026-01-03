@@ -55,4 +55,12 @@ export class UsersService {
       .sort({ gamesWon: -1, maxStreak: -1 })
       .limit(limit);
   }
+
+  /** Searches for users by their username. */
+  async searchByUsername(username: string) {
+    return this.userModel
+      .find({ username: { $regex: username, $options: 'i' } })
+      .select('username email')
+      .limit(10);
+  }
 }
