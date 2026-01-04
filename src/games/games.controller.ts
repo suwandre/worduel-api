@@ -6,6 +6,7 @@ import {
   Param,
   UseGuards,
   Patch,
+  Query,
 } from '@nestjs/common';
 import { GamesService } from './games.service';
 import { CreateGameDto } from './dto/create-game.dto';
@@ -80,5 +81,11 @@ export class GamesController {
       user.userId,
       respondInviteDto.accept,
     );
+  }
+
+  @Get('word-options')
+  getWordOptions(@Query('count') count?: string) {
+    const numCount = count ? parseInt(count, 10) : 4;
+    return this.gamesService.getRandomWords(numCount);
   }
 }

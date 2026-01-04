@@ -10,6 +10,7 @@ import { CreateGameDto } from './dto/create-game.dto';
 import { UsersService } from 'src/users/users.service';
 import { Invite, InviteStatus } from './schemas/invite.schema';
 import { CreateInviteDto } from './dto/create-invite.dto';
+import { WORDUEL_WORDS } from './data/words';
 
 export interface GuessResult {
   letter: string;
@@ -26,6 +27,12 @@ export class GamesService {
 
   /** Creates a new Worduel game between two players. */
   async create(userId: string, createGameDto: CreateGameDto): Promise<Game> {
+    // Validate that the target word is from the word list
+    const normalizedWord = createGameDto.targetWord.toLowerCase();
+    if (!WORDUEL_WORDS.includes(normalizedWord)) {
+      throw new BadRequestException('Invalid target word selected');
+    }
+
     const game = new this.gameModel({
       playerId: new Types.ObjectId(userId),
       targetWord: createGameDto.targetWord.toLowerCase(),
@@ -307,5 +314,15 @@ export class GamesService {
 
     game.targetWord = targetWord.toLowerCase();
     return game.save();
+  }
+
+  /** Gets `count` amount of random words from the word list. */
+  getRandomWords(count: number = 4): string[] {
+    const shuffled = [...WORDUEL_WORDS]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, count)
+      .map((word) => word.toUpperCase());
+
+    return shuffled;
   }
 }
