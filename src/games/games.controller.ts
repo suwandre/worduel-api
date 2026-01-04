@@ -29,14 +29,15 @@ export class GamesController {
     return this.gamesService.create(user.userId, createGameDto);
   }
 
+  @Get('word-options')
+  getWordOptions(@Query('count') count?: string) {
+    const numCount = count ? parseInt(count, 10) : 4;
+    return this.gamesService.getRandomWords(numCount);
+  }
+
   @Get()
   findUserGames(@CurrentUser() user: { userId: string; email: string }) {
     return this.gamesService.findUserGames(user.userId);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.gamesService.findById(id);
   }
 
   @Post(':id/guess')
@@ -83,9 +84,8 @@ export class GamesController {
     );
   }
 
-  @Get('word-options')
-  getWordOptions(@Query('count') count?: string) {
-    const numCount = count ? parseInt(count, 10) : 4;
-    return this.gamesService.getRandomWords(numCount);
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.gamesService.findById(id);
   }
 }
