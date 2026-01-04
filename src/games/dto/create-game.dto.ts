@@ -1,11 +1,22 @@
-import { IsString, Length, IsOptional, IsMongoId } from 'class-validator';
+import {
+  IsString,
+  Length,
+  IsMongoId,
+  IsNumber,
+  IsOptional,
+  Min,
+} from 'class-validator';
 
 export class CreateGameDto {
   @IsString()
-  @Length(5, 5, { message: 'Target word must be exactly 5 letters' })
+  @Length(5, 5)
   targetWord: string;
 
-  @IsOptional()
   @IsMongoId()
-  opponentId?: string;
+  opponentId: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  totalRounds?: number = 3; // Default to 3 rounds
 }

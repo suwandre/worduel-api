@@ -27,19 +27,31 @@ export class GamesService {
 
   /** Creates a new Worduel game between two players. */
   async create(userId: string, createGameDto: CreateGameDto): Promise<Game> {
-    // Validate that the target word is from the word list
+    // Validate word
     const normalizedWord = createGameDto.targetWord.toLowerCase();
     if (!WORDUEL_WORDS.includes(normalizedWord)) {
       throw new BadRequestException('Invalid target word selected');
     }
 
+    // Initialize points map
+    const points = new Map<string, number>();
+    points.set(userId, 0);
+    points.set(createGameDto.opponentId, 0);
+
     const game = new this.gameModel({
-      playerId: new Types.ObjectId(userId),
-      targetWord: createGameDto.targetWord.toLowerCase(),
-      opponentId: createGameDto.opponentId
-        ? new Types.ObjectId(createGameDto.opponentId)
-        : undefined,
+      playerId: userId,
+      opponentId: createGameDto.opponentId,
+      targetWord: createGameDto.targetWord.toUpperCase(),
+      guesses: [],
+      status: 'in_progress',
+      totalRounds: createGameDto.totalRounds || 3,
+      currentRound: 1,
+      currentWordSetter: userId, // Creator sets first word
+      currentGuesser: createGameDto.opponentId, // Opponent guesses first
+      points,
+      roundHistory: [],
     });
+
     return game.save();
   }
 
@@ -63,64 +75,134 @@ export class GamesService {
       .sort({ createdAt: -1 });
   }
 
+  /** Calculate points earned per round: 6 for 1 guess, 5 for 2 guesses, etc. */
+  private calculatePoints(guessCount: number): number {
+    if (guessCount <= 0 || guessCount > 6) return 0;
+    return 7 - guessCount; // 1 guess = 6 pts, 2 = 5 pts, ..., 6 = 1 pt
+  }
+
   /** Submits a guess for a Worduel game. */
   async submitGuess(
     gameId: string,
     userId: string,
     guess: string,
-  ): Promise<{ game: Game; result: GuessResult[]; isCorrect: boolean }> {
+  ): Promise<{
+    game: Game;
+    result: GuessResult[];
+    isCorrect: boolean;
+    roundComplete?: boolean;
+  }> {
     const game = await this.findById(gameId);
 
-    // NEW: Check if user is the opponent (not the creator)
-    if (game.playerId.toString() === userId) {
-      throw new BadRequestException(
-        'You cannot play your own game. Wait for an opponent to guess.',
-      );
+    // Check if user is the current guesser
+    if (game.currentGuesser.toString() !== userId) {
+      throw new BadRequestException('It is not your turn to guess');
     }
 
-    // Check if user is the designated opponent (if set)
-    if (game.opponentId && game.opponentId.toString() !== userId) {
-      throw new BadRequestException('You are not the opponent for this game');
-    }
-
-    // If no opponent set yet, assign this user as opponent
-    if (!game.opponentId) {
-      game.opponentId = new Types.ObjectId(userId);
-    }
-
-    // Check if game is already finished
     if (game.status !== GameStatus.IN_PROGRESS) {
-      throw new BadRequestException('Game is already finished');
+      throw new BadRequestException('Game is not in progress');
     }
 
-    // Add guess
-    game.guesses.push(guess.toLowerCase());
+    // Validate guess length (allow any 5-letter combo)
+    if (guess.length !== 5) {
+      throw new BadRequestException('Guess must be exactly 5 letters');
+    }
+
+    const normalizedGuess = guess.toUpperCase();
+    game.guesses.push(normalizedGuess);
 
     // Calculate result
-    const result = this.calculateGuessResult(
-      guess.toLowerCase(),
-      game.targetWord,
-    );
-    const isCorrect = guess.toLowerCase() === game.targetWord;
+    const result = this.calculateGuessResult(normalizedGuess, game.targetWord);
+    const isCorrect = result.every((r) => r.status === 'correct');
 
-    // Update game status
-    if (isCorrect) {
-      game.status = GameStatus.WON;
-      game.completedAt = new Date();
+    // Check if round is complete
+    const maxGuesses = 6;
+    const roundComplete = isCorrect || game.guesses.length >= maxGuesses;
 
-      // Update opponent's stats (the one who guessed)
-      await this.updateUserStats(userId, true, game.guesses.length);
-    } else if (game.guesses.length >= game.maxAttempts) {
-      game.status = GameStatus.LOST;
-      game.completedAt = new Date();
+    if (roundComplete) {
+      // Award points if guessed correctly
+      const pointsAwarded = isCorrect
+        ? this.calculatePoints(game.guesses.length)
+        : 0;
 
-      // Update opponent's stats (the one who guessed)
-      await this.updateUserStats(userId, false, game.guesses.length);
+      // Update points
+      const currentPoints = game.points.get(userId) || 0;
+      game.points.set(userId, currentPoints + pointsAwarded);
+
+      // Save round history
+      game.roundHistory.push({
+        round: game.currentRound,
+        wordSetter: game.currentWordSetter,
+        guesser: game.currentGuesser,
+        targetWord: game.targetWord,
+        guesses: [...game.guesses],
+        pointsAwarded: pointsAwarded,
+        completedAt: new Date(),
+      });
+
+      // Check if all rounds are complete
+      if (game.currentRound >= game.totalRounds) {
+        // Game over - determine winner
+        const player1Id = game.playerId.toString();
+        const player2Id = game.opponentId.toString();
+        const player1Points = game.points.get(player1Id) || 0;
+        const player2Points = game.points.get(player2Id) || 0;
+
+        if (player1Points > player2Points) {
+          game.winner = game.playerId;
+        } else if (player2Points > player1Points) {
+          game.winner = game.opponentId;
+        }
+        // If tied, winner remains undefined
+
+        game.status = GameStatus.COMPLETED;
+      } else {
+        // Move to next round - swap roles
+        game.currentRound += 1;
+        game.currentWordSetter = game.currentGuesser;
+        game.currentGuesser =
+          game.currentWordSetter.toString() === game.playerId.toString()
+            ? game.opponentId
+            : game.playerId;
+
+        // Reset for next round
+        game.targetWord = ''; // Will be set by new word setter
+        game.guesses = [];
+        game.status = GameStatus.WAITING; // Waiting for next word
+      }
     }
 
     await game.save();
+    return { game, result, isCorrect, roundComplete };
+  }
 
-    return { game, result, isCorrect };
+  /** Sets the target word for a round in a game by the word setter. */
+  async setRoundWord(
+    gameId: string,
+    userId: string,
+    word: string,
+  ): Promise<Game> {
+    const game = await this.findById(gameId);
+
+    if (game.status !== GameStatus.WAITING) {
+      throw new BadRequestException('Game is not waiting for a word');
+    }
+
+    if (game.currentWordSetter.toString() !== userId) {
+      throw new BadRequestException('It is not your turn to set the word');
+    }
+
+    // Validate word
+    const normalizedWord = word.toLowerCase();
+    if (!WORDUEL_WORDS.includes(normalizedWord)) {
+      throw new BadRequestException('Invalid target word selected');
+    }
+
+    game.targetWord = word.toUpperCase();
+    game.status = GameStatus.IN_PROGRESS;
+    await game.save();
+
+    return game;
   }
 
   /** Analyzes a player's guess and checks the result. */

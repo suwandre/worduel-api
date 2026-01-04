@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, type JwtUser } from '../common/decorators/user.decorator';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { RespondInviteDto } from './dto/respond-invite.dto';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('games')
 @UseGuards(JwtAuthGuard)
@@ -87,5 +88,15 @@ export class GamesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.gamesService.findById(id);
+  }
+
+  @Post(':id/set-word')
+  @UseGuards(AuthGuard)
+  setRoundWord(
+    @Param('id') id: string,
+    @Body() body: { word: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.setRoundWord(id, user.userId, body.word);
   }
 }
