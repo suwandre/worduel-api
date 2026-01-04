@@ -14,9 +14,17 @@ export class UsersService {
     username: string,
     password: string,
   ): Promise<User> {
-    const existingUser = await this.userModel.findOne({ email });
+    // Check for existing user
+    const existingUser = await this.userModel.findOne({
+      $or: [
+        { email: email.toLowerCase() },
+        { username: username.toLowerCase() },
+      ],
+    });
     if (existingUser) {
-      throw new ConflictException('Email already exists');
+      throw new ConflictException(
+        'User with same email or username already exists',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
