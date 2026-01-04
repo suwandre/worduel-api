@@ -157,13 +157,14 @@ export class GamesService {
 
         game.status = GameStatus.COMPLETED;
       } else {
-        // Move to next round - swap roles
+        // Move to next round
         game.currentRound += 1;
-        game.currentWordSetter = game.currentGuesser;
-        game.currentGuesser =
-          game.currentWordSetter.toString() === game.playerId.toString()
-            ? game.opponentId
-            : game.playerId;
+
+        // Swap roles
+        const previousGuesser = game.currentGuesser;
+        const previousWordSetter = game.currentWordSetter;
+        game.currentWordSetter = previousGuesser;
+        game.currentGuesser = previousWordSetter;
 
         // Reset for next round
         game.targetWord = ''; // Will be set by new word setter
